@@ -74,54 +74,11 @@ gimple_opt_pass *make_pass_cfcss(gcc::context *ctxt) {
     return new pass_cfcss();
 }
 
-/**
-  * General ctrlsig function
-  */
-static const char *_inst_ctrlsig(int d, int S, int D, int m)
-{
-    static char buffer[100];
-    int funct7 = (d >> 1) & 0x7f;
-    int rd = (D & 0xf) << 1;
-    rd |= m&1;
-    int f3 = (D >> 4) & 7;
-    int rs1 = (D >> 7) &1;
-    rs1 |= (S & 0xf) << 1;
-    int rs2 = (S >> 4) & 0xf;
-    rs2 |= (d & 1) << 4;
-    sprintf(buffer,
-    ".insn r CUSTOM_0, %d, %d, x%d, x%d, x%d # d(%d), s(%d), D(%d), m(%d)",
-    f3, funct7, rd, rs1, rs2, d, S, D, m);
-    return buffer;
-}
-
-/**
-  * @return instruction string of ctrlsig_s
-  * G = G ^ (@param d)
-  * if G == (@param S) then D = (@param D)
-  * else raise an exception
-  * !This function is NOT threadsafe!
-  */
-static const char *inst_ctrlsig_s(int d, int S, int D)
-{
-    return _inst_ctrlsig(d, S, D, 0);
-}
-
-/**
-  * @return instruction string of ctrlsig_m
-  * G = G ^ (@param d) ^ D
-  * if G == (@param S) then D = (@param D)
-  * else raise an exception
-  * !This function is NOT threadsafe!
-  */
-static const char *inst_ctrlsig_m(int d, int S, int D)
-{
-    return _inst_ctrlsig(d, S, D, 1);
-}
-
 static tree attr_handler(tree *node, tree name, tree args, int flags, bool *no_add_attrs) {
     // will never be called
     return NULL_TREE;
 }
+
 
 static attribute_spec attr_cfc = { "cfcheck", 0, 1, false,  false, false, attr_handler };
 
@@ -178,6 +135,9 @@ unsigned int pass_cfcss::execute(function *fun) {
 
   // Basic block.
   basic_block bb;
+
+  // Instruction string buffer.
+  char inst[64];
 
   if(!is_cfc_enabled(fun)) return 0;
 
@@ -252,18 +212,21 @@ unsigned int pass_cfcss::execute(function *fun) {
     cfcss_sig_t cur_diff = diff[bb];
     cfcss_sig_t cur_adj = dmap.find(bb) != dmap.end() ? dmap[bb] : 0;
 
-    if (bb->preds->length() >= 2)
-      stmt = gimple_build_asm_vec(inst_ctrlsig_m(cur_diff, cur_sig, cur_adj),
+    if (bb->preds->length() >= 2) {
+      sprintf(inst, "ctrlsig_m %d,%d,%d", cur_diff, cur_sig, cur_adj);
+      stmt = gimple_build_asm_vec(inst,
                                   nullptr, nullptr, nullptr, nullptr);
-    else
-      stmt = gimple_build_asm_vec(inst_ctrlsig_s(cur_diff, cur_sig, cur_adj),
+    } else {
+      sprintf(inst, "ctrlsig_s %d,%d,%d", cur_diff, cur_sig, cur_adj);
+      stmt = gimple_build_asm_vec(inst,
                                   nullptr, nullptr, nullptr, nullptr);
+    }
     gimple_asm_set_volatile(stmt, true);
     gsi_insert_before(&gsi, stmt, GSI_NEW_STMT);
 
     if ((*bb->preds)[0]->src == fun->cfg->x_entry_block_ptr) {
       stmt = gimple_build_asm_vec(
-        ".insn r CUSTOM_1, 0, 0, x2, x0, x0",
+        "pushsig",
         nullptr, nullptr, nullptr, nullptr
       );
       gsi_insert_before(&gsi, stmt, GSI_SAME_STMT);
@@ -271,13 +234,25 @@ unsigned int pass_cfcss::execute(function *fun) {
       gimple_set_modified(stmt, false);
     }
 
+    gsi = gsi_last_bb(bb);
+    if (gimple_code(gsi_stmt(gsi)) == GIMPLE_COND
+        || gimple_code(gsi_stmt(gsi)) == GIMPLE_CALL
+        || gimple_code(gsi_stmt(gsi)) == GIMPLE_RETURN)
+      gsi_prev(&gsi);
+    stmt = gimple_build_asm_vec(
+      "crcsig 0",
+      nullptr, nullptr, nullptr, nullptr
+    );
+    gsi_insert_after(&gsi, stmt, GSI_NEW_STMT);
+    gimple_asm_set_volatile(stmt, true);
+    gimple_set_modified(stmt, false);
+
     if ((*bb->succs)[0]->dest == fun->cfg->x_exit_block_ptr) {
-      gsi = gsi_last_bb(bb);
       stmt = gimple_build_asm_vec(
-        ".insn r CUSTOM_1, 0, 0, x3, x0, x0",
+        "popsig",
         nullptr, nullptr, nullptr, nullptr
       );
-      gsi_insert_before(&gsi, stmt, GSI_SAME_STMT);
+      gsi_insert_after(&gsi, stmt, GSI_SAME_STMT);
       gimple_asm_set_volatile(stmt, true);
       gimple_set_modified(stmt, false);
     }
