@@ -120,6 +120,9 @@ unsigned int pass_cfcss::execute(function *fun) {
   // Signature differences.
   std::map<basic_block, cfcss_sig_t> diff;
 
+  // Call statements.
+  std::vector<gimple *> call_stmts;
+
   // Conditional branches before adjusting signature assignments for
   // fall-through multi-fan-in successors.
   std::vector<gimple *> fall_thru_sigs;
@@ -139,9 +142,26 @@ unsigned int pass_cfcss::execute(function *fun) {
   // Instruction string buffer.
   char inst[64];
 
+  // Whether a tail call is encountered.
+  bool is_tail_call;
+
   if(!is_cfc_enabled(fun)) return 0;
 
   push_cfun(fun);
+
+  FOR_EACH_BB_FN (bb, fun) {
+    // Find all the call statements. The basic blocks are to be split after
+    // those statements because subroutine calls can bring changes to the CRC
+    // signature.
+    for (auto gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi))
+      if (gimple_code(gsi_stmt(gsi)) == GIMPLE_CALL
+          && gsi.ptr != gsi_last_nondebug_bb(bb).ptr
+          && !gimple_call_tail_p((const gcall *)gsi_stmt(gsi)))
+        call_stmts.push_back(gsi_stmt(gsi));
+  }
+
+  for (auto &stmt : call_stmts)
+      split_block(stmt->bb, stmt);
 
   FOR_EACH_BB_FN (bb, fun) {
     // Naïve approach to assign signatures.
@@ -205,7 +225,7 @@ unsigned int pass_cfcss::execute(function *fun) {
 
 
   FOR_EACH_BB_FN (bb, fun) {
-    auto gsi = gsi_after_labels(bb);
+    auto gsi = gsi_start_nondebug_after_labels_bb(bb);
     gasm *stmt = nullptr;
 
     cfcss_sig_t cur_sig = sig[bb];
@@ -234,20 +254,31 @@ unsigned int pass_cfcss::execute(function *fun) {
       gimple_set_modified(stmt, false);
     }
 
-    gsi = gsi_last_bb(bb);
+    gsi = gsi_last_nondebug_bb(bb);
+    is_tail_call = false;
+    if (gimple_code(gsi_stmt(gsi)) == GIMPLE_CALL
+        && gimple_call_tail_p((const gcall *)gsi_stmt(gsi)))
+      is_tail_call = true;
     if (gimple_code(gsi_stmt(gsi)) == GIMPLE_COND
         || gimple_code(gsi_stmt(gsi)) == GIMPLE_CALL
         || gimple_code(gsi_stmt(gsi)) == GIMPLE_RETURN)
-      gsi_prev(&gsi);
+      gsi_prev_nondebug(&gsi);
+    if (gimple_code(gsi_stmt(gsi)) == GIMPLE_CALL
+        && gimple_call_tail_p((const gcall *)gsi_stmt(gsi))) {
+      is_tail_call = true;
+      gsi_prev_nondebug(&gsi);
+    }
+    sprintf(inst, "crcsig 0 # <bb %d>", bb->index);
     stmt = gimple_build_asm_vec(
-      "crcsig 0",
+      inst,
       nullptr, nullptr, nullptr, nullptr
     );
     gsi_insert_after(&gsi, stmt, GSI_NEW_STMT);
     gimple_asm_set_volatile(stmt, true);
     gimple_set_modified(stmt, false);
 
-    if ((*bb->succs)[0]->dest == fun->cfg->x_exit_block_ptr) {
+    if ((*bb->succs)[0]->dest == fun->cfg->x_exit_block_ptr
+        || is_tail_call) {
       stmt = gimple_build_asm_vec(
         "popsig",
         nullptr, nullptr, nullptr, nullptr
