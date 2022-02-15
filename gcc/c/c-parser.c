@@ -1557,6 +1557,8 @@ static void c_parser_omp_requires (c_parser *);
 static bool c_parser_omp_ordered (c_parser *, enum pragma_context, bool *);
 static void c_parser_oacc_routine (c_parser *, enum pragma_context);
 
+static void c_parser_cfcheck(c_parser *, bool *);
+
 /* These Objective-C parser functions are only ever called when
    compiling Objective-C.  */
 static void c_parser_objc_class_definition (c_parser *, tree);
@@ -12216,6 +12218,39 @@ c_parser_objc_at_dynamic_declaration (c_parser *parser)
   objc_add_dynamic_declaration (loc, list);
 }
 
+/* Parse a pragma cfcheck 
+ * #pragma cfcheck on/off
+ * force enable/disable control flow checking
+ * for the immediately following statement or block,
+ * overrides global default and function attributes
+ */
+static void
+c_parser_cfcheck(c_parser *parser, bool *if_p)
+{
+#define CFC_CMD_ERROR do { error_at(location, "Expect on/off after %<#pragma cfcheck%>"); \
+	c_parser_skip_to_pragma_eol(parser); return;} while(0)
+
+	c_parser_consume_pragma(parser);
+	location_t location = c_parser_peek_token(parser) -> location;
+	if(c_parser_next_token_is_not(parser, CPP_NAME))
+		CFC_CMD_ERROR;
+	const char *cmd = IDENTIFIER_POINTER (c_parser_peek_token (parser)->value);
+	int on_off = 0;
+	if(!strcmp(cmd, "on")) on_off = 1;
+	else if(!strcmp(cmd, "off")) on_off = 0;
+	else CFC_CMD_ERROR;
+	c_parser_consume_token(parser);
+#undef CFC_CMD_ERROR
+	c_parser_skip_to_pragma_eol(parser);
+	location = c_parser_peek_token(parser) -> location;
+	// read next statement or block into stmt
+	tree stmt = push_stmt_list();
+	c_parser_statement(parser, if_p);
+	pop_stmt_list(stmt);
+	// drop stmt currently
+	// todo
+}
+
 
 /* Parse a pragma GCC ivdep.  */
 
@@ -12480,6 +12515,15 @@ c_parser_pragma (c_parser *parser, enum pragma_context context, bool *if_p)
       c_parser_error (parser, "%<#pragma GCC pch_preprocess%> must be first");
       c_parser_skip_until_found (parser, CPP_PRAGMA_EOL, NULL);
       return false;
+
+	case PRAGMA_CFCHECK:
+		if(context != pragma_stmt && context != pragma_compound) {
+			c_parser_error(parser, "Invalid location of %<#pragma cfcheck%>.");
+			c_parser_skip_until_found (parser, CPP_PRAGMA_EOL, NULL);
+			return false;
+		}
+		c_parser_cfcheck (parser, if_p);
+		return true;
 
     case PRAGMA_OACC_WAIT:
       if (context != pragma_compound)

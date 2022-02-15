@@ -76,6 +76,8 @@ enum pragma_kind {
   PRAGMA_IVDEP,
   PRAGMA_UNROLL,
 
+  PRAGMA_CFCHECK,
+
   PRAGMA_FIRST_EXTERNAL
 };
 
