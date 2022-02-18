@@ -12219,6 +12219,7 @@ c_parser_objc_at_dynamic_declaration (c_parser *parser)
 }
 
 static bool in_pragma_cfc = false;
+static int cfc_inst_cnt = 0;
 
 /* Parse a pragma cfcheck 
  * #pragma cfcheck on/off
@@ -12229,45 +12230,118 @@ static bool in_pragma_cfc = false;
 static void
 c_parser_cfcheck(c_parser *parser, bool *if_p)
 {
+#define ATTR_CFCHECK_HASH_CPP 0x9d73e2bbu
+#define ATTR_NOINLINE_HASH_CPP 0xfd594186u
+#define CFC_CMD_ON 1
+#define CFC_CMD_OFF 0
+#define CFC_CMD_BREAK 2
 #define CFC_CMD_ERROR do { error_at(location, "Expect on/off after %<#pragma cfcheck%>"); \
 	c_parser_skip_to_pragma_eol(parser); return;} while(0)
 
+	location_t loc_pragma = c_parser_peek_token(parser) -> location;
 	c_parser_consume_pragma(parser);
 	location_t location = c_parser_peek_token(parser) -> location;
 	if(c_parser_next_token_is_not(parser, CPP_NAME))
 		CFC_CMD_ERROR;
 	const char *cmd = IDENTIFIER_POINTER (c_parser_peek_token (parser)->value);
-	int on_off = 0;
-	if(!strcmp(cmd, "on")) on_off = 1;
-	else if(!strcmp(cmd, "off")) on_off = 0;
+	int cmd_id;
+	if(!strcmp(cmd, "on")) cmd_id = CFC_CMD_ON;
+	else if(!strcmp(cmd, "off")) cmd_id = CFC_CMD_OFF;
+	else if(!strcmp(cmd, "break")) cmd_id = CFC_CMD_BREAK;
 	else CFC_CMD_ERROR;
 	c_parser_consume_token(parser);
 #undef CFC_CMD_ERROR
 	c_parser_skip_to_pragma_eol(parser);
 	location = c_parser_peek_token(parser) -> location;
-	// might allow very soon
-	if(in_pragma_cfc) {
-		error_at(location, "Nested %<#pragma cfcheck%> is currently not allowed.");
-		return;
+	if(cmd_id == CFC_CMD_BREAK)
+	{
+		if(!in_pragma_cfc) {
+			error_at(location, "%<#pragma cfcheck break%> not inside a %<#pragma cfcheck%> block");
+			return;
+		}
+		// todo: insert tagged return expr here
+		error_at(location, "%<#pragma cfcheck break%> is currently not implemented");
 	}
-	// currently force a block after to avoid many problems
+	// currently ensure a block after to avoid many problems
 	if(c_parser_next_token_is_not(parser, CPP_OPEN_BRACE))
 	{
 		error_at(location, "%<#pragma cfcheck%> MUST be followed by a %<{%>.");
 		return;
 	}
-	in_pragma_cfc = 1;
-	// read the block into body
-	tree body = push_stmt_list();
-	c_parser_statement(parser, if_p);
-	body = pop_stmt_list(body);
-	in_pragma_cfc = 0;
-	// we assume the body is either BIND_EXPR or STATEMENT_LIST
-	gcc_assert(TREE_CODE(body) == BIND_EXPR || TREE_CODE(body) == STATEMENT_LIST);
+	++in_pragma_cfc;
+	// the following part replace the pragma with
+	// void __attribute__((cfcheck(?), noinline))  __iN_cfcprAgma_fNAME()
 
-	// drop the body currently
+	// step 1. start a function
+	struct c_declspecs *specs = build_null_declspecs();
+	// step 2. add return type void
+	specs->non_sc_seen_p = true;
+	specs->declspecs_seen_p = true;
+	specs->non_std_attrs_seen_p = true;
+	specs->typespec_kind = ctsk_resword;
+	specs->typespec_word = cts_void;
+	specs->locations[cdw_typespec] = loc_pragma;
+	// step 3.1. add attribute cfcheck
+	tree t = make_node(IDENTIFIER_NODE);
+	t->identifier.id = *ht_lookup(parse_in->hash_table, "cfcheck", 7, HT_ALLOC);
+	tree tt = build_int_cst(NULL_TREE, cmd_id);
+	t = build_tree_list(t, tt);
+	// step 3.2. add attribute noinline
+	tt = make_node(IDENTIFIER_NODE);
+	tt->identifier.id = *ht_lookup(parse_in->hash_table, "noinline", 8, HT_ALLOC);
+	tt = build_tree_list(tt, NULL_TREE);
+	t = chainon(t, tt);
+	// step 3.3. commit attributes
+	declspecs_add_attrs(loc_pragma, specs, t);
+	finish_declspecs(specs);
+	tt = specs->attrs;
+	specs->attrs = NULL_TREE;
+	// step 4. generate a name
+	char buffer[64];
+	int len = snprintf(buffer, 64, "__i%x_cfcprAgma_f%s", ++cfc_inst_cnt, IDENTIFIER_POINTER(DECL_NAME(cfun->decl)));
+	if(len > 63) len = 63;
+	t = make_node(IDENTIFIER_NODE);
+	t->identifier.id = *ht_lookup(parse_in->hash_table, buffer, len, HT_ALLOC);
+	struct c_declarator *decl = build_id_declarator(t);
+	decl->id_loc = loc_pragma;
+	// step 5. add empty parameter list
+	struct c_arg_info *args = build_arg_info();
+	decl = build_function_declarator(args, decl);
+	// step 6. start function
+	c_push_function_context();
+	if(!start_function(specs, decl, tt))
+	{
+		error_at(loc_pragma, "Compiler Error: cannot start function");
+		c_pop_function_context();
+		return;
+	}
+	auto_timevar at (g_timer, TV_PARSE_FUNC);
+	store_parm_decls();
+	location_t startloc = c_parser_peek_token(parser) -> location;
+	DECL_STRUCT_FUNCTION(current_function_decl) -> function_start_locus = startloc;
+	location_t endloc = startloc;
+	// step 7. parse body
+	tree body = c_parser_compound_statement (parser, &endloc);
+	// step 7.1 emit control flow warning if error is present
 	// todo
+	// step 8. end function
+	--in_pragma_cfc;
+	decl = current_function_decl;
+	DECL_STATIC_CHAIN(decl) = 1;
+	add_stmt(body);
+	finish_function(endloc);
+	c_pop_function_context();
+	add_stmt(build_stmt(DECL_SOURCE_LOCATION(decl), DECL_EXPR, decl));
+	// step 9. add funcall statement
+	add_stmt(build_call_expr_loc(c_parser_peek_token(parser)->location, decl, 0));
+	// step 10. check return statements inside block
+	// walk_tree()
 }
+#undef ATTR_CFCHECK_HASH_CPP
+#undef ATTR_NOINLINE_HASH_CPP
+#undef CFC_CMD_ON
+#undef CFC_CMD_OFF
+#undef CFC_CMD_BREAK
 
 
 /* Parse a pragma GCC ivdep.  */
@@ -12535,7 +12609,7 @@ c_parser_pragma (c_parser *parser, enum pragma_context context, bool *if_p)
       return false;
 
 	case PRAGMA_CFCHECK:
-		if(context != pragma_stmt && context != pragma_compound) {
+		if(context != pragma_compound) {
 			c_parser_error(parser, "Invalid location of %<#pragma cfcheck%>.");
 			c_parser_skip_until_found (parser, CPP_PRAGMA_EOL, NULL);
 			return false;
