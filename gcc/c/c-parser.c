@@ -12218,6 +12218,8 @@ c_parser_objc_at_dynamic_declaration (c_parser *parser)
   objc_add_dynamic_declaration (loc, list);
 }
 
+static bool in_pragma_cfc = false;
+
 /* Parse a pragma cfcheck 
  * #pragma cfcheck on/off
  * force enable/disable control flow checking
@@ -12243,11 +12245,27 @@ c_parser_cfcheck(c_parser *parser, bool *if_p)
 #undef CFC_CMD_ERROR
 	c_parser_skip_to_pragma_eol(parser);
 	location = c_parser_peek_token(parser) -> location;
-	// read next statement or block into stmt
-	tree stmt = push_stmt_list();
+	// might allow very soon
+	if(in_pragma_cfc) {
+		error_at(location, "Nested %<#pragma cfcheck%> is currently not allowed.");
+		return;
+	}
+	// currently force a block after to avoid many problems
+	if(c_parser_next_token_is_not(parser, CPP_OPEN_BRACE))
+	{
+		error_at(location, "%<#pragma cfcheck%> MUST be followed by a %<{%>.");
+		return;
+	}
+	in_pragma_cfc = 1;
+	// read the block into body
+	tree body = push_stmt_list();
 	c_parser_statement(parser, if_p);
-	pop_stmt_list(stmt);
-	// drop stmt currently
+	body = pop_stmt_list(body);
+	in_pragma_cfc = 0;
+	// we assume the body is either BIND_EXPR or STATEMENT_LIST
+	gcc_assert(TREE_CODE(body) == BIND_EXPR || TREE_CODE(body) == STATEMENT_LIST);
+
+	// drop the body currently
 	// todo
 }
 
