@@ -11066,6 +11066,13 @@ c_finish_bc_stmt (location_t loc, tree *label_p, bool is_break)
 	error ("continue statement within %<#pragma simd%> loop body");
       return NULL_TREE;
 
+    case 3:
+      if(is_break)
+  error_at(loc, "break statement within %<#pragma cfcheck%> region");
+      else
+  error_at(loc, "continue statement within %<#pragma cfcheck%> region");
+      return NULL_TREE;
+
     default:
       gcc_unreachable ();
     }
