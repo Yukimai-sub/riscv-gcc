@@ -10580,6 +10580,12 @@ c_finish_return (location_t loc, tree retval, tree origtype)
     warning_at (xloc, 0,
 		"function declared %<noreturn%> has a %<return%> statement");
 
+  if (TREE_CODE(c_break_label) == INTEGER_CST && TREE_INT_CST_LOW(c_break_label) == 3)
+  {
+    error_at(loc, "return inside a %<#pragma cfcheck%> block");
+    return NULL_TREE;
+  }
+
   if (retval)
     {
       tree semantic_type = NULL_TREE;

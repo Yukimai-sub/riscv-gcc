@@ -43940,6 +43940,10 @@ cp_parser_pragma (cp_parser *parser, enum pragma_context context, bool *if_p)
 	return true;
       }
 
+    case PRAGMA_CFCHECK:
+      cp_parser_error(parser, "%<#pragma cfcheck%> is currently not implemented in C++ frontend");
+      break;
+
     default:
       gcc_assert (id >= PRAGMA_FIRST_EXTERNAL);
       c_invoke_pragma_handler (id);

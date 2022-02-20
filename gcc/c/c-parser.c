@@ -12237,15 +12237,15 @@ cfc_add_break(location_t loc)
 		error_at(loc, "Invalid location of %<#pragma cfcheck break%>");
 		return;
 	}
-	tree t = c_finish_return(loc, NULL_TREE, NULL_TREE);
-	add_stmt(t); // todo add t into whitelist
+	tree t = build_stmt(loc, RETURN_EXPR, NULL_TREE);
+	add_stmt(t);
 }
 
 /* Parse a pragma cfcheck 
  * #pragma cfcheck on/off
  * force enable/disable control flow checking
  * for the immediately following statement or block,
- * overrides global default and function attributes
+ * overrides outer pragmas/attributes
  */
 static void
 c_parser_cfcheck(c_parser *parser, enum pragma_context context)
@@ -12376,8 +12376,6 @@ c_parser_cfcheck(c_parser *parser, enum pragma_context context)
 	// step 9. add funcall statement
 	t = build_call_expr_loc(c_parser_peek_token(parser)->location, TREE_OPERAND(t, 0), 0);
 	add_stmt(t);
-	// step 10. check return statements inside block
-	// walk_tree()
 }
 #undef ATTR_CFCHECK_HASH_CPP
 #undef ATTR_NOINLINE_HASH_CPP
