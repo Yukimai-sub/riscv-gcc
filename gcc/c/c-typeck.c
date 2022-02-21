@@ -10580,7 +10580,7 @@ c_finish_return (location_t loc, tree retval, tree origtype)
     warning_at (xloc, 0,
 		"function declared %<noreturn%> has a %<return%> statement");
 
-  if (current_function_decl->decl_common.lang_flag_5)
+  if (TREE_LANG_FLAG_3(current_function_decl))
   {
     error_at(loc, "return inside a %<#pragma cfcheck%> block");
     return NULL_TREE;

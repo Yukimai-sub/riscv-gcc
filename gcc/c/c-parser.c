@@ -12231,7 +12231,7 @@ cfc_get_cpp_hash(const unsigned char *s, int len)
 static void
 cfc_add_break(location_t loc)
 {
-	if(!current_function_decl || !current_function_decl->decl_common.lang_flag_5)
+	if(!current_function_decl || !TREE_LANG_FLAG_3(current_function_decl))
 	{
 		error_at(loc, "Invalid location of %<#pragma cfcheck break%>");
 		return;
@@ -12349,7 +12349,7 @@ c_parser_cfcheck(c_parser *parser, enum pragma_context context)
 	DECL_STRUCT_FUNCTION(current_function_decl) -> function_start_locus = startloc;
 	location_t endloc = startloc;
 	// step 6.1. tag function decl
-	current_function_decl->decl_common.lang_flag_5 = 1;
+	TREE_LANG_FLAG_3(current_function_decl) = 1;
 	// step 6.2. push break and continue label
 	t = c_break_label;
 	tt = c_cont_label;
@@ -12362,8 +12362,8 @@ c_parser_cfcheck(c_parser *parser, enum pragma_context context)
 	c_cont_label = tt;
 	// step 8. end function
 	tree fndecl = current_function_decl;
-	gcc_assert(fndecl->decl_common.lang_flag_5);
-	fndecl->decl_common.lang_flag_5 = 0;
+	gcc_assert(TREE_LANG_FLAG_3(fndecl));
+	TREE_LANG_FLAG_3(fndecl) = 0;
 	DECL_STATIC_CHAIN(fndecl) = 1;
 	add_stmt(body);
 	finish_function(endloc);
