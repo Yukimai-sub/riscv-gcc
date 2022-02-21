@@ -10580,6 +10580,12 @@ c_finish_return (location_t loc, tree retval, tree origtype)
     warning_at (xloc, 0,
 		"function declared %<noreturn%> has a %<return%> statement");
 
+  if (TREE_LANG_FLAG_3(current_function_decl))
+  {
+    error_at(loc, "return inside a %<#pragma cfcheck%> block");
+    return NULL_TREE;
+  }
+
   if (retval)
     {
       tree semantic_type = NULL_TREE;
@@ -11064,6 +11070,13 @@ c_finish_bc_stmt (location_t loc, tree *label_p, bool is_break)
 	error ("break statement within %<#pragma simd%> loop body");
       else 
 	error ("continue statement within %<#pragma simd%> loop body");
+      return NULL_TREE;
+
+    case 3:
+      if(is_break)
+  error_at(loc, "break statement within %<#pragma cfcheck%> region");
+      else
+  error_at(loc, "continue statement within %<#pragma cfcheck%> region");
       return NULL_TREE;
 
     default:

@@ -1,8 +1,10 @@
 This is a patched version of riscv-gcc-10.2.0 to support control flow integrity check.
-Provide -fcfc to enable cfc globally by default. -fno-cfc to disable. (default to disable)
+Provide -fcfc to enable cfc globally by default. -fno-cfc to disable. (default is disable)
 Adding attribute((cfcheck)) to a function enables check for the function,
 adding attribute((cfcheck(false))) to function disables it. Attributes override the default.
 
+Use #pragma cfcheck on/off to turn on/off check for a region.
+Some example usages are under directory `cfc-misc/pragma-test/exp`
 
 This directory contains the GNU Compiler Collection (GCC).
 
