@@ -4,7 +4,7 @@ Adding attribute((cfcheck)) to a function enables check for the function,
 adding attribute((cfcheck(false))) to function disables it. Attributes override the default.
 
 Use #pragma cfcheck on/off to turn on/off check for a region.
-Some example usages are under directory `yukimai/pragma-test/exp`
+Some example usages are under directory `cfc-misc/pragma-test/exp`
 
 This directory contains the GNU Compiler Collection (GCC).
 

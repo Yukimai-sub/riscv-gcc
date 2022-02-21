@@ -12217,7 +12217,6 @@ c_parser_objc_at_dynamic_declaration (c_parser *parser)
   objc_add_dynamic_declaration (loc, list);
 }
 
-static tree in_pragma_cfc = NULL_TREE;
 static int cfc_inst_cnt = 0;
 
 static uint32_t
@@ -12232,7 +12231,7 @@ cfc_get_cpp_hash(const unsigned char *s, int len)
 static void
 cfc_add_break(location_t loc)
 {
-	if(in_pragma_cfc == NULL_TREE || TREE_VALUE(in_pragma_cfc) != current_function_decl)
+	if(!current_function_decl || !current_function_decl->decl_common.lang_flag_5)
 	{
 		error_at(loc, "Invalid location of %<#pragma cfcheck break%>");
 		return;
@@ -12349,8 +12348,8 @@ c_parser_cfcheck(c_parser *parser, enum pragma_context context)
 	location_t startloc = c_parser_peek_token(parser) -> location;
 	DECL_STRUCT_FUNCTION(current_function_decl) -> function_start_locus = startloc;
 	location_t endloc = startloc;
-	// step 6.1. chain curfunc onto in_pragma_cfc
-	in_pragma_cfc = tree_cons(NULL_TREE, current_function_decl, in_pragma_cfc);
+	// step 6.1. tag function decl
+	current_function_decl->decl_common.lang_flag_5 = 1;
 	// step 6.2. push break and continue label
 	t = c_break_label;
 	tt = c_cont_label;
@@ -12362,11 +12361,9 @@ c_parser_cfcheck(c_parser *parser, enum pragma_context context)
 	c_break_label = t;
 	c_cont_label = tt;
 	// step 8. end function
-	gcc_assert(TREE_VALUE(in_pragma_cfc) == current_function_decl);
-	t = in_pragma_cfc;
-	in_pragma_cfc = TREE_CHAIN(in_pragma_cfc);
-	free_node(t);
 	tree fndecl = current_function_decl;
+	gcc_assert(fndecl->decl_common.lang_flag_5);
+	fndecl->decl_common.lang_flag_5 = 0;
 	DECL_STATIC_CHAIN(fndecl) = 1;
 	add_stmt(body);
 	finish_function(endloc);

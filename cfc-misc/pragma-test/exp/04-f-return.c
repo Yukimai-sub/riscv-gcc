@@ -6,7 +6,7 @@ void test()
     {
         #pragma cfcheck on
         {
-            if(some_integer() == 5)
+            for(;some_integer() == 5;)
                 return; // this return aims to return from test()
         } // which may cause control flow transfer between checked and unchecked region
         // so we do not allow this
