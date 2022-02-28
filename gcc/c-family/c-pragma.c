@@ -1548,8 +1548,8 @@ init_pragma (void)
   if (!flag_preprocess_only)
     cpp_register_deferred_pragma (parse_in, "GCC", "unroll", PRAGMA_UNROLL,
 				  false, false);
-
-  cpp_register_deferred_pragma(parse_in, 0, "cfcheck", PRAGMA_CFCHECK, false, false);
+  if (!flag_preprocess_only)
+    cpp_register_deferred_pragma(parse_in, 0, "cfcheck", PRAGMA_CFCHECK, false, false);
 
 #ifdef HANDLE_PRAGMA_PACK_WITH_EXPANSION
   c_register_pragma_with_expansion (0, "pack", handle_pragma_pack);
