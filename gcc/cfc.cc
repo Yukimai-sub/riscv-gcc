@@ -110,10 +110,7 @@ static int get_func_cfc_attr(tree func_decl)
 static bool is_cfc_enabled(function *func)
 {
   int attr = get_func_cfc_attr(func->decl);
-  bool ret = global_options.x_cfc_enable ? attr != CFC_ATTR_DISABLE : attr == CFC_ATTR_ENABLE;
-  if(ret && global_options.x_flag_lto)
-    warning(OPT_Wpragmas, "CF Check is disabled because %<-flto%> is present");
-  return ret && !global_options.x_flag_lto;
+  return global_options.x_cfc_enable ? attr != CFC_ATTR_DISABLE : attr == CFC_ATTR_ENABLE;
 }
 
 unsigned int pass_cfcss::execute(function *fun) {
