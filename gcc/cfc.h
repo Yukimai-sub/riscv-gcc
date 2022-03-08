@@ -7,7 +7,7 @@
 
 
 // registered in passes.def
-class pass_cfcss : public gimple_opt_pass {
+class pass_cfcss : public rtl_opt_pass {
 public:
   pass_cfcss();
 
@@ -19,7 +19,7 @@ public:
 };
 
 // required for registering
-gimple_opt_pass *make_pass_cfcss(gcc::context *ctxt);
+rtl_opt_pass *make_pass_cfcss(gcc::context *ctxt);
 
 typedef unsigned char cfcss_sig_t;
 
